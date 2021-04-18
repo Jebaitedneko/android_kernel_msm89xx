@@ -360,7 +360,7 @@ GENKSYMS	= scripts/genksyms/genksyms
 INSTALLKERNEL  := installkernel
 DEPMOD		= depmod
 PERL		= perl
-PYTHON		= python
+PYTHON		= $(shell, which python2)
 CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
