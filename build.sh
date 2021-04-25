@@ -23,8 +23,8 @@ YYLL2=$KROOT/scripts/dtc/dtc-lexer.l
 
 get_gcc49() {
 	ISGCC=1
-	TC_64=$KROOT/../gcc-4.9-64
-	TC_32=$KROOT/../gcc-4.9-32
+	TC_64=$KROOT/../toolchains/gcc-4.9-64
+	TC_32=$KROOT/../toolchains/gcc-4.9-32
 
 	if [ ! -d $TC_64 ]; then
 		mkdir -p $TC_64
@@ -54,8 +54,8 @@ get_gcc49() {
 
 get_gcc11() {
 	ISGCC=1
-	TC_64=$KROOT/../gcc-11-64
-	TC_32=$KROOT/../gcc-11-32
+	TC_64=$KROOT/../toolchains/gcc-11-64
+	TC_32=$KROOT/../toolchains/gcc-11-32
 
 	if [ ! -d $TC_64 ]; then
 		mkdir -p $TC_64
@@ -85,7 +85,7 @@ get_gcc11() {
 
 get_proton_clang() {
 	ISCLANG=1
-	TC=$KROOT/../clang-proton
+	TC=$KROOT/../toolchains/clang-proton
 
 	if [ ! -d $TC ]; then
 		mkdir -p $TC
