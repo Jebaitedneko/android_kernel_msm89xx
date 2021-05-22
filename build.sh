@@ -38,31 +38,49 @@ UFDT_ARGS="create dtbo.img --page_size=4096 $DTBO_DIR/*.dtbo"
 
 BUILD_MODULES_DIR="$KERNEL_ROOT_DIR/out/modules"
 
+git_clone() {
+	if [ ! -d "${3}" ]; then
+		mkdir -p "${3}"
+		git clone \
+			--depth=1 \
+			--single-branch \
+			"${1}" \
+			-b "${2}" \
+			"${3}"
+	fi
+}
+
+check_updates_from_github() {
+	REMOTE_SHA=$(curl -s "${1}/commits/${2}" | grep "Copy the full SHA" | grep -oE "[0-9a-f]{40}" | head -n1)
+	LOCAL_SHA=$( ( cd "${3}"; [ -d ".git" ] && git log | grep -oE "[0-9a-f]{40}" | head -n1 ) )
+	echo -e "\nREMOTE: ${REMOTE_SHA}"
+	echo -e "\nLOCAL:  ${LOCAL_SHA}"
+	if [[ "${REMOTE_SHA}" != "${LOCAL_SHA}" ]]; then
+		echo -e "\nSHA Mismatch. Fetching Upstream...\n"
+		( rm -rf "${3}"; git clone --depth=1 "${1}" --single-branch -b "${2}" "${3}" )
+	else
+		echo -e "\nSHA Matched.\n"
+	fi
+}
+
 get_gcc-4.9() {
 
+	CC_IS_CLANG=0
 	CC_IS_GCC=1
-	TC_64=$TOOLCHAIN_DIR/los-gcc-4.9-64
-	TC_32=$TOOLCHAIN_DIR/los-gcc-4.9-32
 
-	if [ ! -d "$TC_64/bin" ]; then
-		mkdir -p "$TC_64"
-		git clone \
-			--depth=1 \
-			--single-branch \
-			https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 \
-			-b lineage-18.1 \
-			"$TC_64"
-	fi
+	TC_64="$TOOLCHAIN_DIR/los-gcc-4.9-64"
+	REPO_64="https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9"
+	BRANCH_64="lineage-18.1"
 
-	if [ ! -d "$TC_32/bin" ]; then
-		mkdir -p "$TC_32"
-		git clone \
-			--depth=1 \
-			--single-branch \
-			https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 \
-			-b lineage-18.1 \
-			"$TC_32"
-	fi
+	TC_32="$TOOLCHAIN_DIR/los-gcc-4.9-32"
+	REPO_32="https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9"
+	BRANCH_32="lineage-18.1"
+
+	git_clone "${REPO_64}" "${BRANCH_64}" "${TC_64}"
+	check_updates_from_github "${REPO_64}" "${BRANCH_64}" "${TC_64}"
+
+	git_clone "${REPO_32}" "${BRANCH_32}" "${TC_32}"
+	check_updates_from_github "${REPO_32}" "${BRANCH_32}" "${TC_32}"
 
 	CROSS="$TC_64/bin/aarch64-linux-android-"
 	CROSS_ARM32="$TC_32/bin/arm-linux-androideabi-"
@@ -73,62 +91,47 @@ get_gcc-4.9() {
 
 get_gcc-4.9-aosp() {
 
+	CC_IS_CLANG=0
 	CC_IS_GCC=1
-	TC_64=$TOOLCHAIN_DIR/gcc-4.9-64
-	TC_32=$TOOLCHAIN_DIR/gcc-4.9-32
 
-	if [ ! -d "$TC_64/bin" ]; then
-		mkdir -p "$TC_64"
-		git clone \
-			--depth=1 \
-			--single-branch \
-			https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
-			-b master \
-			"$TC_64"
-	fi
+	TC_64="$TOOLCHAIN_DIR/gcc-4.9-64"
+	REPO_64="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9"
+	BRANCH_64="master"
 
-	if [ ! -d "$TC_32/bin" ]; then
-		mkdir -p "$TC_32"
-		git clone \
-			--depth=1 \
-			--single-branch \
-			https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 \
-			-b master \
-			"$TC_32"
-	fi
+	TC_32="$TOOLCHAIN_DIR/gcc-4.9-32"
+	REPO_32="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9"
+	BRANCH_32="master"
+
+	git_clone "${REPO_64}" "${BRANCH_64}" "${TC_64}"
+	check_updates_from_github "${REPO_64}" "${BRANCH_64}" "${TC_64}"
+
+	git_clone "${REPO_32}" "${BRANCH_32}" "${TC_32}"
+	check_updates_from_github "${REPO_32}" "${BRANCH_32}" "${TC_32}"
 
 	CROSS="$TC_64/bin/aarch64-linux-android-"
 	CROSS_ARM32="$TC_32/bin/arm-linux-androideabi-"
 
 	MAKEOPTS=""
-
 }
 
 get_eva_gcc-12.0() {
 
+	CC_IS_CLANG=0
 	CC_IS_GCC=1
-	TC_64=$TOOLCHAIN_DIR/gcc-12.0-64
-	TC_32=$TOOLCHAIN_DIR/gcc-12.0-32
 
-	if [ ! -d "$TC_64/bin" ]; then
-		mkdir -p "$TC_64"
-		git clone \
-			--depth=1 \
-			--single-branch \
-			https://github.com/mvaisakh/gcc-arm64 \
-			-b gcc-master \
-			"$TC_64"
-	fi
+	TC_64="$TOOLCHAIN_DIR/gcc-12.0-64"
+	REPO_64="https://github.com/mvaisakh/gcc-arm64"
+	BRANCH_64="gcc-master"
 
-	if [ ! -d "$TC_32/bin" ]; then
-		mkdir -p "$TC_32"
-		git clone \
-			--depth=1 \
-			--single-branch \
-			https://github.com/mvaisakh/gcc-arm \
-			-b gcc-master \
-			"$TC_32"
-	fi
+	TC_32="$TOOLCHAIN_DIR/gcc-12.0-32"
+	REPO_32="https://github.com/mvaisakh/gcc-arm"
+	BRANCH_32="gcc-master"
+
+	git_clone "${REPO_64}" "${BRANCH_64}" "${TC_64}"
+	check_updates_from_github "${REPO_64}" "${BRANCH_64}" "${TC_64}"
+
+	git_clone "${REPO_32}" "${BRANCH_32}" "${TC_32}"
+	check_updates_from_github "${REPO_32}" "${BRANCH_32}" "${TC_32}"
 
 	CROSS="$TC_64/bin/aarch64-elf-"
 	CROSS_ARM32="$TC_32/bin/arm-eabi-"
@@ -147,18 +150,15 @@ get_eva_gcc-12.0() {
 
 get_proton_clang-13.0() {
 
+	CC_IS_GCC=0
 	CC_IS_CLANG=1
-	TC=$TOOLCHAIN_DIR/proton-clang-13.0
 
-	if [ ! -d "$TC/bin" ]; then
-		mkdir -p "$TC"
-		git clone \
-			--depth=1 \
-			--single-branch \
-			https://github.com/kdrag0n/proton-clang \
-			-b master \
-			"$TC"
-	fi
+	TC="$TOOLCHAIN_DIR/proton-clang-13.0"
+	REPO="https://github.com/kdrag0n/proton-clang"
+	BRANCH="master"
+
+	git_clone "${REPO}" "${BRANCH}" "${TC}"
+	check_updates_from_github "${REPO}" "${BRANCH}" "${TC}"
 
 	CROSS="$TC/bin/aarch64-linux-gnu-"
 	CROSS_ARM32="$TC/bin/arm-linux-gnueabi-"
@@ -187,13 +187,43 @@ get_proton_clang-13.0() {
 
 }
 
+
+get_sdclang-12.1() {
+
+	get_proton_clang-13.0
+
+	CC_IS_GCC=0
+	CC_IS_CLANG=1
+
+	TC="$TOOLCHAIN_DIR/sdclang-12.1"
+	REPO="https://github.com/ThankYouMario/proprietary_vendor_qcom_sdclang"
+	BRANCH="ruby-12"
+
+	git_clone "${REPO}" "${BRANCH}" "${TC}"
+	check_updates_from_github "${REPO}" "${BRANCH}" "${TC}"
+
+	TRIPLE="$TC/bin/aarch64-linux-gnu-"
+
+	MAKEOPTS="CLANG_TRIPLE=$TRIPLE CC=clang LD=ld.lld AR=llvm-ar AS=llvm-as NM=llvm-nm STRIP=llvm-strip \
+				OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
+				HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTAS=llvm-as HOSTLD=ld.lld"
+
+	if [[ $DISABLE_LLD_IAS == "1" ]]; then
+		MAKEOPTS="CLANG_TRIPLE=$TRIPLE CC=clang AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
+					OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
+					HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar"
+	fi
+
+}
+
 get_aosp_clang-r383902() {
 
 	get_gcc-4.9-aosp
 
 	CC_IS_GCC=0
 	CC_IS_CLANG=1
-	TC=$TOOLCHAIN_DIR/aosp-clang-r383902
+
+	TC="$TOOLCHAIN_DIR/aosp-clang-r383902"
 
 	if [ ! -d "$TC/bin" ]; then
 		mkdir -p "$TC"
@@ -210,39 +240,6 @@ get_aosp_clang-r383902() {
 	MAKEOPTS="CLANG_TRIPLE=$TRIPLE CC=clang"
 
 }
-
-get_sdclang-12.1() {
-
-	get_proton_clang-13.0
-
-	CC_IS_GCC=0
-	CC_IS_CLANG=1
-	TC=$TOOLCHAIN_DIR/sdclang-12.1
-
-	if [ ! -d "$TC/bin" ]; then
-		mkdir -p "$TC"
-		git clone \
-			--depth=1 \
-			--single-branch \
-			https://github.com/ThankYouMario/proprietary_vendor_qcom_sdclang \
-			-b ruby-12 \
-			"$TC"
-	fi
-
-	TRIPLE="$TC/bin/aarch64-linux-gnu-"
-
-	MAKEOPTS="CLANG_TRIPLE=$TRIPLE CC=clang LD=ld.lld AR=llvm-ar AS=llvm-as NM=llvm-nm STRIP=llvm-strip \
-				OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
-				HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTAS=llvm-as HOSTLD=ld.lld"
-
-	if [[ $DISABLE_LLD_IAS == "1" ]]; then
-		MAKEOPTS="CLANG_TRIPLE=$TRIPLE CC=clang AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
-					OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
-					HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar"
-	fi
-
-}
-
 
 make_dtboimg() {
 
@@ -369,7 +366,7 @@ build() {
 		export DTC_EXT DTC_FLAGS
 	fi
 
-	if [[ $1 != "" && $1 == "dtbs" ]]; then
+	if [[ ${1} != "" && ${1} == "dtbs" ]]; then
 		echo -e "\nMaking only DTBs as requested...\n"
 		echo -e "\n\nmake CC=clang O=out ARCH=$TARGET_ARCH dtbs\n\n"
 		make CC=clang O=out ARCH=$TARGET_ARCH CONFIG_BUILD_ARM64_DT_OVERLAY=y dtbs && exit || exit
@@ -379,24 +376,24 @@ build() {
 
 		if [[ $ENABLE_CCACHE == "1" ]]; then
 			echo -e "\nUsing ccache with gcc"
-			echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC=\"ccache ${CROSS_COMPILE}gcc\" -j$(($(nproc)+8))\n\n"
-			make $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC="ccache ${CROSS_COMPILE}gcc" -j$(($(nproc)+8)) || exit
+			echo -e "\n\nmake CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC=\"ccache ${CROSS_COMPILE}gcc\" -j$(($(nproc)+8))\n\n"
+			make CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC="ccache ${CROSS_COMPILE}gcc" -j$(($(nproc)+8)) || exit
 		else
 			echo -e "\nNot using ccache with gcc"
-			echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8))\n\n"
-			make $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8)) || exit
+			echo -e "\n\nmake CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8))\n\n"
+			make CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8)) || exit
 		fi
 	else
 		if [[ $CC_IS_CLANG == "1" ]]; then
 
 			if [[ $ENABLE_CCACHE == "1" ]]; then
 				echo -e "\nUsing ccache with clang"
-				echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC=\"ccache clang\" -j$(($(nproc)+8))\n\n"
+				echo -e "\n\nmake CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC=\"ccache clang\" -j$(($(nproc)+8))\n\n"
 				make CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC="ccache clang" -j$(($(nproc)+8)) || exit
 			else
 				echo -e "\nNot using ccache with clang"
-				echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8))\n\n"
-				make $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8)) || exit
+				echo -e "\n\nmake CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8))\n\n"
+				make CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8)) || exit
 			fi
 		fi
 	fi
@@ -413,9 +410,9 @@ build() {
 					mkdir -p "$BUILD_MODULES_DIR"
 			fi
 			echo -e "\nMaking modules..."
-			echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH INSTALL_MOD_PATH=$BUILD_MODULES_DIR INSTALL_MOD_STRIP=1 modules_install\n\n"
+			echo -e "\n\nmake CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH INSTALL_MOD_PATH=$BUILD_MODULES_DIR INSTALL_MOD_STRIP=1 modules_install\n\n"
 
-			make $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH INSTALL_MOD_PATH="$BUILD_MODULES_DIR" INSTALL_MOD_STRIP=1 modules_install || exit
+			make CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH INSTALL_MOD_PATH="$BUILD_MODULES_DIR" INSTALL_MOD_STRIP=1 modules_install || exit
 
 			echo -e "\nDone."
 		fi
@@ -572,7 +569,7 @@ build_zip() {
 
 }
 
-case $1 in
+case "${1}" in
 	"build")
 		build ;;
 	"zip")
@@ -580,5 +577,5 @@ case $1 in
 	"dtboimg")
 		make_dtboimg ;;
 	*)
-		build "$1" && build_zip ;;
+		build "${1}" && build_zip ;;
 esac
