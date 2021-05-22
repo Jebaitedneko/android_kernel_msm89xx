@@ -8,19 +8,22 @@ TARGET_ARCH="arm64"
 KERNEL_CONFIG="holland2_defconfig"
 ZIP_NAME="holland2"
 ENABLE_CCACHE="1"
-TOOLCHAIN="3" # 1) gcc-4.9 2) eva-gcc-11 3) proton-clang-13 4) sdclang-10
+TOOLCHAIN="3" # 1) gcc-4.9 2) eva-gcc-11 3) proton-clang-13 4) sdclang-12.1 5) aosp-clang-r383902
+DISABLE_LLD="0"
+DISABLE_IAS="1"
 DISABLE_LLD_IAS="0"
 BUILD_MODULES="0"
-FLASH_MODULES_SYSTEMLESSLY="0"
+DO_SYSTEMLESS="1"
 BUILD_DTBO_IMG="0"
-PATCH_PERMISSIVE="1"
-PATCH_CLASSPATH="1"
-DTC_EXT_FOR_DTC="1"
+PATCH_PERMISSIVE="0"
+PATCH_CLASSPATH="0"
+RAMOOPS_MEMRESERVE="1"
+DTC_EXT_FOR_DTC="0"
 
 OUT_BOOT_DIR="$KERNEL_ROOT_DIR/out/arch/$TARGET_ARCH/boot"
 DTBO_DIR="$OUT_BOOT_DIR/dts/qcom"
 
-TOOLCHAIN_DIR="$KERNEL_ROOT_DIR/../../../toolchains"
+TOOLCHAIN_DIR="$KERNEL_ROOT_DIR/../../toolchains"
 
 ANYKERNEL_DIR="$TOOLCHAIN_DIR/anykernel3"
 ANYKERNEL_SRC="https://github.com/osm0sis/AnyKernel3"
@@ -31,15 +34,15 @@ DTBTOOL_ARGS="-v -s 2048 -o $OUT_BOOT_DIR/dt.img"
 
 UFDT_DIR="$TOOLCHAIN_DIR/libufdt"
 UFDT_SRC="https://android.googlesource.com/platform/system/libufdt"
-UFDT_ARGS="create dtbo.img $DTBO_DIR/*.dtbo"
+UFDT_ARGS="create dtbo.img --page_size=4096 $DTBO_DIR/*.dtbo"
 
 BUILD_MODULES_DIR="$KERNEL_ROOT_DIR/out/modules"
 
 get_gcc-4.9() {
 
 	CC_IS_GCC=1
-	TC_64=$TOOLCHAIN_DIR/gcc-4.9-64
-	TC_32=$TOOLCHAIN_DIR/gcc-4.9-32
+	TC_64=$TOOLCHAIN_DIR/los-gcc-4.9-64
+	TC_32=$TOOLCHAIN_DIR/los-gcc-4.9-32
 
 	if [ ! -d "$TC_64/bin" ]; then
 		mkdir -p "$TC_64"
@@ -58,6 +61,39 @@ get_gcc-4.9() {
 			--single-branch \
 			https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 \
 			-b lineage-18.1 \
+			"$TC_32"
+	fi
+
+	CROSS="$TC_64/bin/aarch64-linux-android-"
+	CROSS_ARM32="$TC_32/bin/arm-linux-androideabi-"
+
+	MAKEOPTS=""
+
+}
+
+get_gcc-4.9-aosp() {
+
+	CC_IS_GCC=1
+	TC_64=$TOOLCHAIN_DIR/gcc-4.9-64
+	TC_32=$TOOLCHAIN_DIR/gcc-4.9-32
+
+	if [ ! -d "$TC_64/bin" ]; then
+		mkdir -p "$TC_64"
+		git clone \
+			--depth=1 \
+			--single-branch \
+			https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
+			-b master \
+			"$TC_64"
+	fi
+
+	if [ ! -d "$TC_32/bin" ]; then
+		mkdir -p "$TC_32"
+		git clone \
+			--depth=1 \
+			--single-branch \
+			https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 \
+			-b master \
 			"$TC_32"
 	fi
 
@@ -97,7 +133,15 @@ get_eva_gcc-12.0() {
 	CROSS="$TC_64/bin/aarch64-elf-"
 	CROSS_ARM32="$TC_32/bin/arm-eabi-"
 
-	MAKEOPTS=""
+	MAKEOPTS="LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
+				OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
+				HOSTAR=llvm-ar HOSTLD=ld.lld"
+
+	if [[ $DISABLE_LLD == "1" ]]; then
+		MAKEOPTS="AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
+					OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
+					HOSTAR=llvm-ar"
+	fi
 
 }
 
@@ -123,13 +167,49 @@ get_proton_clang-13.0() {
 				OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
 				HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTAS=llvm-as HOSTLD=ld.lld"
 
-	if [[ $DISABLE_LLD_IAS == "1" ]]; then
-		MAKEOPTS="CC=clang AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
+	if [[ $DISABLE_LLD == "1" ]]; then
+		MAKEOPTS="CC=clang AR=llvm-ar AS=llvm-as NM=llvm-nm STRIP=llvm-strip \
 					OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
-					HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar"
+					HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTAS=llvm-as"
+	else
+		if [[ $DISABLE_IAS == "1" ]]; then
+			MAKEOPTS="CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
+						OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
+						HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTLD=ld.lld"
+		else
+			if [[ $DISABLE_LLD_IAS == "1" ]]; then
+				MAKEOPTS="CC=clang AR=llvm-ar AS=llvm-as NM=llvm-nm STRIP=llvm-strip \
+							OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
+							HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTAS=llvm-as"
+			fi
+		fi
 	fi
+
 }
 
+get_aosp_clang-r383902() {
+
+	get_gcc-4.9-aosp
+
+	CC_IS_GCC=0
+	CC_IS_CLANG=1
+	TC=$TOOLCHAIN_DIR/aosp-clang-r383902
+
+	if [ ! -d "$TC/bin" ]; then
+		mkdir -p "$TC"
+		(
+			cd "$TC"
+			if [ ! -f "clang-r383902.tar.gz" ]; then
+				wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r383902.tar.gz
+				tar -xf clang-r383902.tar.gz -C .
+			fi
+		)
+	fi
+
+	TRIPLE="$TC/bin/aarch64-linux-gnu-"
+	MAKEOPTS="CLANG_TRIPLE=$TRIPLE CC=clang"
+
+}
 
 get_sdclang-12.1() {
 
@@ -207,6 +287,7 @@ build() {
 		2) echo -e "\nSelecting EVA-GCC-12.0...\n" && get_eva_gcc-12.0 ;;
 		3) echo -e "\nSelecting PROTON-CLANG-13.0...\n" && get_proton_clang-13.0 ;;
 		4) echo -e "\nSelecting SDCLANG-12.1...\n" && get_sdclang-12.1 ;;
+		5) echo -e "\nSelecting AOSP-CLANG-R383902...\n" && get_aosp_clang-r383902 ;;
 	esac
 
 	if [[ $TARGET_ARCH = "arm" ]]; then
@@ -221,12 +302,16 @@ build() {
 	if [[ ! -f ${TRIPLE%/*}/clang ]]; then
 		echo -e "TRIPLE unset. Assuming Bare-Metal...\n"
 	else
-		echo -e "$( "${TRIPLE%/*}"/clang -v )"
+		echo -e "$( "${TRIPLE%/*}"/clang -v )" && IS_AOSP_CLANG="1"
 	fi
 
 	if [[ ! -f ${CROSS_COMPILE}gcc ]]; then
 		if [[ ! -f ${CROSS_COMPILE%/*}/clang ]]; then
-			echo -e "\nCROSS_COMPILE not set properly." && exit
+			if [[ $IS_AOSP_CLANG == "1" ]]; then
+				echo -e "\nARM64: Detected AOSP Binutils: ${CROSS_COMPILE}"
+			else
+				echo -e "\nCROSS_COMPILE not set properly." && exit
+			fi
 		else
 			echo -e "$( "${CROSS_COMPILE%/*}"/clang -v )"
 		fi
@@ -236,7 +321,11 @@ build() {
 
 	if [[ ! -f ${CROSS_COMPILE_ARM32}gcc ]]; then
 		if [[ ! -f ${CROSS_COMPILE_ARM32%/*}/clang ]]; then
-			echo -e "\nCROSS_COMPILE_ARM32 not set properly." && exit
+			if [[ $IS_AOSP_CLANG == "1" ]]; then
+				echo -e "\nARM32: Detected AOSP Binutils: ${CROSS_COMPILE_ARM32}"
+			else
+				echo -e "\nCROSS_COMPILE_ARM32 not set properly." && exit
+			fi
 		else
 			echo -e "$( "${CROSS_COMPILE_ARM32%/*}"/clang -v )"
 		fi
@@ -303,7 +392,7 @@ build() {
 			if [[ $ENABLE_CCACHE == "1" ]]; then
 				echo -e "\nUsing ccache with clang"
 				echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC=\"ccache clang\" -j$(($(nproc)+8))\n\n"
-				make $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC="ccache clang" -j$(($(nproc)+8)) || exit
+				make CONFIG_DEBUG_SECTION_MISMATCH=y $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH CC="ccache clang" -j$(($(nproc)+8)) || exit
 			else
 				echo -e "\nNot using ccache with clang"
 				echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH -j$(($(nproc)+8))\n\n"
@@ -316,18 +405,20 @@ build() {
 		make_dtboimg
 	fi
 
-	if [[ $BUILD_HAS_MODULES == "1" ]]; then
-		if [ -d "$BUILD_MODULES_DIR" ]; then
-				rm -rf "$BUILD_MODULES_DIR"
-		else
-				mkdir -p "$BUILD_MODULES_DIR"
+	if [[ $BUILD_MODULES == "1" ]]; then
+		if [[ $BUILD_HAS_MODULES == "1" ]]; then
+			if [ -d "$BUILD_MODULES_DIR" ]; then
+					rm -rf "$BUILD_MODULES_DIR"
+			else
+					mkdir -p "$BUILD_MODULES_DIR"
+			fi
+			echo -e "\nMaking modules..."
+			echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH INSTALL_MOD_PATH=$BUILD_MODULES_DIR INSTALL_MOD_STRIP=1 modules_install\n\n"
+
+			make $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH INSTALL_MOD_PATH="$BUILD_MODULES_DIR" INSTALL_MOD_STRIP=1 modules_install || exit
+
+			echo -e "\nDone."
 		fi
-		echo -e "\nMaking modules..."
-		echo -e "\n\nmake $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH INSTALL_MOD_PATH=$BUILD_MODULES_DIR INSTALL_MOD_STRIP=1 modules_install\n\n"
-
-		make $(echo -e "$MAKEOPTS") O=out ARCH=$TARGET_ARCH INSTALL_MOD_PATH="$BUILD_MODULES_DIR" INSTALL_MOD_STRIP=1 modules_install || exit
-
-		echo -e "\nDone."
 	fi
 
 	[ -d "$KERNEL_ROOT_DIR"/.git ] && git restore "$YYLL1" "$YYLL2"
@@ -343,6 +434,7 @@ build_zip() {
 
 	echo -e "\nCleaning Up Old AnyKernel Remnants...\n"
 	PRE_FILES="Image
+	Image-dtb
 	Image.gz
 	Image.gz-dtb
 	dt.img
@@ -362,13 +454,12 @@ build_zip() {
 	# osm0sis @ xda-developers
 
 	properties() { '
-	kernel.string=generic
-	do.devicecheck=0
+	kernel.string=test
+	device.name1=generic
 	do.modules=0
 	do.systemless=0
 	do.cleanup=1
 	do.cleanuponabort=0
-	device.name1=generic
 	'; }
 
 	block=/dev/block/bootdevice/by-name/boot;
@@ -376,27 +467,31 @@ build_zip() {
 	ramdisk_compression=auto;
 
 	. tools/ak3-core.sh;
-	chmod -R 750 $ramdisk/*;
-	chown -R root:root $ramdisk/*;
+
+	set_perm_recursive 0 0 755 644 \$ramdisk/*;
+	set_perm_recursive 0 0 750 750 \$ramdisk/init* \$ramdisk/sbin;
 
 	dump_boot;
 
-	ui_print \"*******************************************\"
-	ui_print \"Flash In Progress...\"
-	ui_print \"*******************************************\"
+	if [ -d \$ramdisk/overlay ]; then
+		rm -rf \$ramdisk/overlay;
+	fi;
 
 	# patch_cmdline firmware_class.path firmware_class.path=/vendor/firmware_mnt/image
 	# patch_cmdline androidboot.selinux androidboot.selinux=permissive
+	# patch_cmdline ramoops_memreserve ramoops_memreserve=8M
 
 	write_boot;
 	" > "$ANYKERNEL_DIR"/anykernel.sh
 
-	BUILD_HAS_MODULES=$( [[ $(grep "=m" "$KERNEL_ROOT_DIR"/out/.config | wc -c) -gt 0 ]] && echo 1 )
-	if [[ $BUILD_HAS_MODULES == "1" ]]; then
-		sed -i "s/do.modules=0/do.modules=1/g" "$ANYKERNEL_DIR"/anykernel.sh
+	if [[ $BUILD_MODULES == "1" ]]; then
+		BUILD_HAS_MODULES=$( [[ $(grep "=m" "$KERNEL_ROOT_DIR"/out/.config | wc -c) -gt 0 ]] && echo 1 )
+		if [[ $BUILD_HAS_MODULES == "1" ]]; then
+			sed -i "s/do.modules=0/do.modules=1/g" "$ANYKERNEL_DIR"/anykernel.sh
+		fi
 	fi
 
-	if [[ $FLASH_MODULES_SYSTEMLESSLY == "1" ]]; then
+	if [[ $DO_SYSTEMLESS == "1" ]]; then
 		sed -i "s/do.systemless=0/do.systemless=1/g" "$ANYKERNEL_DIR"/anykernel.sh
 	fi
 
@@ -406,6 +501,10 @@ build_zip() {
 
 	if [[ $PATCH_CLASSPATH == "1" ]]; then
 		sed -i "s/# patch_cmdline firmware_class.path/patch_cmdline firmware_class.path/g" "$ANYKERNEL_DIR"/anykernel.sh
+	fi
+
+	if [[ $RAMOOPS_MEMRESERVE == "1" ]]; then
+		sed -i "s/# patch_cmdline ramoops_memreserve/patch_cmdline ramoops_memreserve/g" "$ANYKERNEL_DIR"/anykernel.sh
 	fi
 
 	sed -i "s/kernel.string=generic/kernel.string=$ZIP_NAME/g" "$ANYKERNEL_DIR"/anykernel.sh
@@ -420,10 +519,14 @@ build_zip() {
 
 		if [[ ! -f $OUT_BOOT_DIR/Image.gz-dtb ]]; then
 			if [[ ! -f $OUT_BOOT_DIR/Image.gz ]]; then
-				if [[ ! -f $OUT_BOOT_DIR/Image ]]; then
-					echo -e "\nNo kernels found. Exiting..." && exit
+				if [[ ! -f $OUT_BOOT_DIR/Image-dtb ]]; then
+					if [[ ! -f $OUT_BOOT_DIR/Image ]]; then
+						echo -e "\nNo kernels found. Exiting..." && exit
+					else
+						cp "$OUT_BOOT_DIR"/Image "$ANYKERNEL_DIR" && make_dtimg
+					fi
 				else
-					cp "$OUT_BOOT_DIR"/Image "$ANYKERNEL_DIR" && make_dtimg
+					cp "$OUT_BOOT_DIR"/Image-dtb "$ANYKERNEL_DIR"
 				fi
 			else
 				cp "$OUT_BOOT_DIR"/Image.gz "$ANYKERNEL_DIR" && make_dtimg
@@ -445,7 +548,10 @@ build_zip() {
 		ZIP_PREFIX_KVER=$(grep Linux "$KERNEL_ROOT_DIR"/out/.config | cut -f 3 -d " ")
 		ZIP_POSTFIX_DATE=$(date +%d-%h-%Y-%R:%S | sed "s/:/./g")
 
-		BUILD_HAS_MODULES=$( [[ $(grep "=m" "$KERNEL_ROOT_DIR"/out/.config | wc -c) -gt 0 ]] && echo 1 )
+		if [[ $BUILD_MODULES == "1" ]]; then
+			BUILD_HAS_MODULES=$( [[ $(grep "=m" "$KERNEL_ROOT_DIR"/out/.config | wc -c) -gt 0 ]] && echo 1 )
+		fi
+
 		if [[ $BUILD_HAS_MODULES == "1" ]]; then
 			MOD_DIR="$ANYKERNEL_DIR"/modules/system/lib/modules
 			K_MOD_DIR="$KERNEL_ROOT_DIR"/out/modules
@@ -466,16 +572,13 @@ build_zip() {
 
 }
 
-if [[ $1 != "" && $1 == "build" ]]; then
-	build
-else
-	if [[ $1 != "" && $1 == "zip" ]]; then
-		build_zip
-	else
-		if [[ $1 != "" && $1 == "dtboimg" ]]; then
-			make_dtboimg
-		else
-			build "$1" && build_zip
-		fi
-	fi
-fi
+case $1 in
+	"build")
+		build ;;
+	"zip")
+		build_zip ;;
+	"dtboimg")
+		make_dtboimg ;;
+	*)
+		build "$1" && build_zip ;;
+esac
