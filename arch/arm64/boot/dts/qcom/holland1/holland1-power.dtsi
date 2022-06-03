@@ -143,16 +143,15 @@
 				qcom,qpnp-lab-max-precharge-time = <500>;
 			};
 		};
-
-		pmi_haptic: qcom,haptics@c000 {
-
-			qcom,vmax-mv = <3400>;
-			qcom,actuator-type = <1>;
-			qcom,min-timeout-ms = <0xC8>;
-			qcom,use-play-irq;
-			qcom,use-sc-irq;
-
-			/delete-property/ qcom,en-brake;
-		};
 	};
 };
+
+&pmi_haptic {
+  qcom,vmax-mv = <3400>;
+  wf_0 { qcom,wf-vmax-mv = <3400>; };
+  wf_1 { qcom,wf-vmax-mv = <3400>; };
+  wf_2 { qcom,wf-vmax-mv = <3400>; };
+  wf_3 { qcom,wf-vmax-mv = <3400>; };
+  wf_4 { qcom,wf-vmax-mv = <3400>; };
+  wf_5 { qcom,wf-vmax-mv = <3400>; };
+}; 
