@@ -20,6 +20,7 @@
 #include <linux/mutex.h>
 #include <linux/of_gpio.h>
 #include <linux/platform_device.h>
+#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <net/netlink.h>
@@ -30,6 +31,7 @@ static struct gf_dev {
 	struct list_head device_entry;
 	struct platform_device *spi;
 	struct input_dev *input;
+	struct regulator *vreg;
 	signed irq_gpio, rst_gpio;
 	signed fp_id_gpio, fp_id_pwr;
 	int irq, irq_enabled;
@@ -109,6 +111,12 @@ static inline void gf_setup(struct gf_dev *gf_dev) {
 	if (request_threaded_irq(gf_dev->irq, NULL, gf_irq,
 			IRQF_TRIGGER_RISING | IRQF_ONESHOT, "gf", gf_dev))
 		irq_switch(gf_dev, 1);
+	gf_dev->vreg = regulator_get(NULL, "pm8937_l6");
+	if (!regulator_is_enabled(gf_dev->vreg)) {
+		regulator_set_voltage(gf_dev->vreg, 1800000, 1800000);
+		if (regulator_enable(gf_dev->vreg))
+			return;
+	}
 	return;
 }
 
@@ -125,6 +133,11 @@ static inline void gf_cleanup(struct gf_dev *gf_dev) {
 		gpio_free(gf_dev->fp_id_gpio);
 	if (gpio_is_valid(gf_dev->fp_id_pwr))
 		gpio_free(gf_dev->fp_id_pwr);
+	if (regulator_is_enabled(gf_dev->vreg)) {
+		regulator_disable(gf_dev->vreg);
+		regulator_put(gf_dev->vreg);
+		gf_dev->vreg = NULL;
+	}
 }
 
 static inline void gpio_reset(struct gf_dev *gf_dev) {
