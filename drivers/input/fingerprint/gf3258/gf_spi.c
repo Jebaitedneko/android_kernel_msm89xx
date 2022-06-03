@@ -31,6 +31,7 @@ static struct gf_dev {
 	struct platform_device *spi;
 	struct input_dev *input;
 	signed irq_gpio, rst_gpio;
+	signed fp_id_gpio, fp_id_pwr;
 	int irq, irq_enabled;
 } gf;
 
@@ -96,6 +97,15 @@ static inline void gf_setup(struct gf_dev *gf_dev) {
 	gpio_request(gf_dev->irq_gpio, "goodix_irq");
 	gpio_direction_input(gf_dev->irq_gpio);
 	gf_dev->irq = gpio_to_irq(gf_dev->irq_gpio);
+	gf_dev->fp_id_gpio = of_get_named_gpio(gf_dev->spi->dev.of_node,
+		"silead,gpio_fp_id", 0);
+	gf_dev->fp_id_pwr = of_get_named_gpio(gf_dev->spi->dev.of_node,
+		"silead,gpio_pwr_id", 0);
+	if (gpio_is_valid(gf_dev->fp_id_gpio) && (gpio_is_valid(gf_dev->fp_id_gpio))) {
+		gpio_direction_output(gf_dev->fp_id_pwr, 1);
+		mdelay(5);
+		gpio_direction_input(gf_dev->fp_id_gpio);
+	}
 	if (request_threaded_irq(gf_dev->irq, NULL, gf_irq,
 			IRQF_TRIGGER_RISING | IRQF_ONESHOT, "gf", gf_dev))
 		irq_switch(gf_dev, 1);
@@ -111,6 +121,10 @@ static inline void gf_cleanup(struct gf_dev *gf_dev) {
 		gpio_free(gf_dev->irq_gpio);
 	if (gpio_is_valid(gf_dev->rst_gpio))
 		gpio_free(gf_dev->rst_gpio);
+	if (gpio_is_valid(gf_dev->fp_id_gpio))
+		gpio_free(gf_dev->fp_id_gpio);
+	if (gpio_is_valid(gf_dev->fp_id_pwr))
+		gpio_free(gf_dev->fp_id_pwr);
 }
 
 static inline void gpio_reset(struct gf_dev *gf_dev) {
@@ -192,6 +206,7 @@ static inline int gf_probe(struct platform_device *pdev) {
 	INIT_LIST_HEAD(&gf_dev->device_entry);
 	gf_dev->spi = pdev;
 	gf_dev->irq_gpio = gf_dev->rst_gpio = -EINVAL;
+	gf_dev->fp_id_gpio = gf_dev->fp_id_pwr = -EINVAL;
 	gf_dev->devt = MKDEV(SPIDEV_MAJOR, minor);
 	mutex_lock(&gf_lock);
 	device_create(gf_class, &gf_dev->spi->dev, gf_dev->devt, gf_dev,
